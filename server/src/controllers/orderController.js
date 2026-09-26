@@ -245,6 +245,7 @@ export const updateOrderStatus = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { status: nextStatus, shelfLocation, reason } = req.body;
+    let order = null;
 
     const cleanedCode = id.replace(/^(PF-|WP-)/i, '').trim();
     if (mongoose.Types.ObjectId.isValid(id)) {
