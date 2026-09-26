@@ -1,0 +1,385 @@
+import React, { useState } from 'react';
+import { 
+  Search, 
+  Printer, 
+  CheckCircle2, 
+  XCircle, 
+  FileText, 
+  Eye
+} from 'lucide-react';
+import { formatBytes } from '../../utils/formatters';
+
+export default function AdminOrderQueue({ orders = [], onSelectOrder, onUpdateStatus }) {
+  const [filter, setFilter] = useState('active'); // 'active', 'review', 'printing', 'all'
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const queueOrders = orders.filter((o) => {
+    if (filter === 'active') return ['paid', 'review', 'printing'].includes(o.status);
+    if (filter === 'review') return ['paid', 'review'].includes(o.status);
+    if (filter === 'printing') return o.status === 'printing';
+    if (filter === 'all') return true;
+    return true;
+  });
+
+  const filteredOrders = queueOrders.filter((o) => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return true;
+    const orderId = (o._id || '').toLowerCase();
+    const orderCode = (o.orderCode || '').toLowerCase();
+    const displayId = (o.displayId || '').toLowerCase();
+    const studentName = (o.studentName || '').toLowerCase();
+    const fileName = (o.fileName || '').toLowerCase();
+
+    return (
+      orderId.includes(q) ||
+      orderCode.includes(q) ||
+      displayId.includes(q) ||
+      studentName.includes(q) ||
+      fileName.includes(q)
+    );
+  });
+
+  const getStatusPill = (status) => {
+    switch (status) {
+      case 'printing':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[12px] font-semibold bg-[#F5A623]/15 text-[#D9861A]">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#F5A623] animate-pulse" />
+            Printing
+          </span>
+        );
+      case 'review':
+      case 'paid':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[12px] font-semibold bg-blue-100 text-blue-800">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
+            Awaiting Review
+          </span>
+        );
+      case 'ready':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[12px] font-semibold bg-[#4CAF50]/15 text-[#4CAF50]">
+            Ready on Shelf
+          </span>
+        );
+      case 'completed':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[12px] font-semibold bg-gray-100 text-[#7A7670]">
+            Collected
+          </span>
+        );
+      case 'rejected':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[12px] font-semibold bg-[#E24B4A]/15 text-[#E24B4A]">
+            Rejected
+          </span>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="space-y-4 animate-in fade-in duration-200">
+      {/* Top Header & Fast Triage Controls */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-[22px] font-bold text-[#1E1E1E]">Order Queue</h1>
+          <p className="text-[13px] text-[#7A7670] mt-0.5">
+            Triage incoming student print jobs sorted newest first
+          </p>
+        </div>
+
+        {/* Controls: Search & Tabs */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+          <div className="relative w-full sm:w-64">
+            <Search className="w-4 h-4 text-[#7A7670] absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search code, student, file..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 bg-white rounded-[10px] border border-[#1E1E1E]/15 text-[13px] focus:outline-none focus:border-[#F5A623]"
+            />
+          </div>
+
+          <div className="flex gap-1 bg-white p-1 rounded-[10px] border border-[#1E1E1E]/15 text-[12px] overflow-x-auto">
+            {[
+              { id: 'active', label: 'Active Queue' },
+              { id: 'review', label: 'Pending Review' },
+              { id: 'printing', label: 'Printing' },
+              { id: 'all', label: 'All' },
+            ].map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setFilter(t.id)}
+                className={`px-3 py-1 rounded-[6px] font-medium transition-colors whitespace-nowrap ${
+                  filter === t.id
+                    ? 'bg-[#1E1E1E] text-white'
+                    : 'text-[#7A7670] hover:text-[#1E1E1E]'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Main Scannable Content */}
+      <div className="rounded-[16px] overflow-hidden">
+        {filteredOrders.length === 0 ? (
+          <div className="bg-white rounded-[16px] p-12 text-center text-[#7A7670] border border-[#1E1E1E]/10 shadow-soft">
+            <Printer className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+            <p className="text-[14px]">No orders currently match the selected view.</p>
+          </div>
+        ) : (
+          <>
+            {/* Mobile Card View (< md) */}
+            <div className="md:hidden space-y-3">
+              {filteredOrders.map((order) => {
+                const orderId = order._id || order.orderCode || order.id;
+                const displayCode = order.displayId || (order.orderCode ? `PF-${order.orderCode}` : (order.id ? (order.id.startsWith('WP-') ? order.id.replace('WP-', 'PF-') : order.id) : 'PF-0000'));
+
+                return (
+                  <div
+                    key={orderId}
+                    onClick={() => onSelectOrder(order)}
+                    className="bg-white rounded-[16px] p-4 shadow-soft border border-[#1E1E1E]/10 space-y-3 cursor-pointer hover:border-[#F5A623]/50 transition-all"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-[#1E1E1E] bg-[#FDF8EF] px-2 py-0.5 rounded-[6px] border border-[#F5A623]/30 text-[13px]">
+                          #{displayCode}
+                        </span>
+                        <div>
+                          <h4 className="font-bold text-[14px] text-[#1E1E1E] leading-tight">{order.studentName}</h4>
+                          <span className="text-[11px] text-[#7A7670]">{order.studentPhone || 'No phone'}</span>
+                        </div>
+                      </div>
+                      {getStatusPill(order.status)}
+                    </div>
+
+                    <div className="p-2.5 rounded-[10px] bg-[#FDF8EF] text-[12px] flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 truncate max-w-[200px]">
+                        <FileText className="w-3.5 h-3.5 text-[#F5A623] shrink-0" />
+                        <span className="font-medium text-[#1E1E1E] truncate">{order.fileName}</span>
+                      </div>
+                      <span className="font-bold text-[#1E1E1E]">₹{order.totalPrice}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-[#7A7670]">
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-1.5 py-0.5 bg-gray-100 rounded text-[#1E1E1E] font-medium">{order.colorMode === 'bw' ? 'B&W' : 'Color'}</span>
+                        <span>{order.pages} pgs</span>
+                        <span>{order.copies}x</span>
+                        <span>{order.paperSize}</span>
+                        {order.doubleSided && <span>Duplex</span>}
+                      </div>
+                    </div>
+
+                    {/* Touch Actions */}
+                    <div 
+                      className="pt-2 border-t border-[#1E1E1E]/5 flex items-center justify-end gap-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {order.status === 'paid' || order.status === 'review' ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => onUpdateStatus(orderId, 'printing')}
+                            className="flex-1 py-2 px-3 bg-[#F5A623] hover:bg-[#D9861A] text-white font-semibold rounded-[10px] text-[12px] flex items-center justify-center gap-1.5 shadow-sm"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>Approve & Print</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onSelectOrder(order)}
+                            className="p-2 text-[#7A7670] hover:text-[#E24B4A] rounded-[10px] bg-gray-50 border border-gray-200"
+                            title="Reject options"
+                          >
+                            <XCircle className="w-4 h-4" />
+                          </button>
+                        </>
+                      ) : null}
+
+                      {order.status === 'printing' ? (
+                        <button
+                          type="button"
+                          onClick={() => onUpdateStatus(orderId, 'ready', { shelfLocation: 'Shelf A-1' })}
+                          className="flex-1 py-2 px-3 bg-[#4CAF50] hover:bg-green-600 text-white font-semibold rounded-[10px] text-[12px] flex items-center justify-center gap-1.5 shadow-sm"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Mark Ready (Shelf A-1)</span>
+                        </button>
+                      ) : null}
+
+                      <button
+                        type="button"
+                        onClick={() => onSelectOrder(order)}
+                        className="py-2 px-3 rounded-[10px] bg-[#FDF8EF] border border-[#F5A623]/30 text-[#1E1E1E] text-[12px] font-medium flex items-center gap-1"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-[#F5A623]" />
+                        <span>Inspect</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop Table View (>= md) */}
+            <div className="hidden md:block bg-white rounded-[16px] shadow-soft border border-[#1E1E1E]/10 overflow-x-auto">
+              <table className="w-full text-left border-collapse text-[13px]">
+              <thead>
+                <tr className="bg-[#FDF8EF] border-b border-[#1E1E1E]/10 text-[#7A7670] font-semibold text-[11px] uppercase tracking-wider">
+                  <th className="py-3 px-4">Order Code</th>
+                  <th className="py-3 px-4">Student</th>
+                  <th className="py-3 px-4">File Name</th>
+                  <th className="py-3 px-4">Specs</th>
+                  <th className="py-3 px-4">Total</th>
+                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#1E1E1E]/5 font-normal">
+                {filteredOrders.map((order) => {
+                  const orderId = order._id || order.orderCode || order.id;
+                  const displayCode = order.displayId || (order.orderCode ? `PF-${order.orderCode}` : (order.id ? (order.id.startsWith('WP-') ? order.id.replace('WP-', 'PF-') : order.id) : 'PF-0000'));
+
+                  return (
+                    <tr 
+                      key={orderId} 
+                      className="hover:bg-amber-50/40 transition-colors cursor-pointer group"
+                      onClick={() => onSelectOrder(order)}
+                    >
+                      {/* Order Code */}
+                      <td className="py-3.5 px-4">
+                        <span className="font-mono font-bold text-[#1E1E1E] bg-[#FDF8EF] px-2 py-1 rounded-[6px] border border-[#F5A623]/30">
+                          #{displayCode}
+                        </span>
+                      </td>
+
+                      {/* Student Name */}
+                      <td className="py-3.5 px-4">
+                        <div className="font-semibold text-[#1E1E1E]">{order.studentName}</div>
+                        <div className="text-[11px] text-[#7A7670]">{order.studentPhone || 'No phone'}</div>
+                      </td>
+
+                      {/* File Name & Pages */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-[#F5A623] shrink-0" />
+                          <span className="font-medium text-[#1E1E1E] truncate max-w-[200px]" title={order.fileName}>
+                            {order.fileName}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-[#7A7670]">
+                          {order.pages} pages {order.fileSize ? `· ${formatBytes(order.fileSize)}` : ''}
+                        </span>
+                      </td>
+
+                      {/* Print Specs */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex flex-wrap gap-1">
+                          <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${
+                            order.colorMode === 'bw' ? 'bg-gray-100 text-[#1E1E1E]' : 'bg-[#F5A623]/20 text-[#D9861A] font-semibold'
+                          }`}>
+                            {order.colorMode === 'bw' ? 'B&W' : 'Color'}
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-gray-100 text-[#1E1E1E] text-[11px]">
+                            {order.copies}x
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-gray-100 text-[#1E1E1E] text-[11px]">
+                            {order.paperSize}
+                          </span>
+                          {order.doubleSided && (
+                            <span className="px-2 py-0.5 rounded bg-gray-100 text-[#7A7670] text-[11px]">
+                              Duplex
+                            </span>
+                          )}
+                        </div>
+                        {order.notes && (
+                          <div className="text-[11px] text-[#D9861A] font-medium truncate max-w-[150px] mt-0.5">
+                            Note: "{order.notes}"
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Total Amount & Payment */}
+                      <td className="py-3.5 px-4">
+                        <div className="font-bold text-[#1E1E1E]">₹{order.totalPrice}</div>
+                        <span className="text-[11px] text-[#4CAF50] font-medium">
+                          {order.paymentMethod === 'wallet' ? 'Wallet Paid' : 'UPI Paid'}
+                        </span>
+                      </td>
+
+                      {/* Status Badge */}
+                      <td className="py-3.5 px-4">
+                        {getStatusPill(order.status)}
+                      </td>
+
+                      {/* Action buttons */}
+                      <td className="py-3.5 px-4 text-right">
+                        <div 
+                          className="inline-flex items-center gap-1.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {order.status === 'paid' || order.status === 'review' ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => onUpdateStatus(orderId, 'printing')}
+                                className="px-3 py-1.5 bg-[#F5A623] hover:bg-[#D9861A] text-white font-semibold rounded-[8px] text-[12px] transition-colors shadow-sm flex items-center gap-1"
+                                title="Approve and print"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                                <span>Approve</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => onSelectOrder(order)}
+                                className="p-1.5 text-[#7A7670] hover:text-[#E24B4A] rounded-[8px] hover:bg-red-50 transition-colors"
+                                title="Reject options"
+                              >
+                                <XCircle className="w-4 h-4" />
+                              </button>
+                            </>
+                          ) : null}
+
+                          {order.status === 'printing' ? (
+                            <button
+                              type="button"
+                              onClick={() => onUpdateStatus(orderId, 'ready', { shelfLocation: 'Shelf A-1' })}
+                              className="px-3 py-1.5 bg-[#4CAF50] hover:bg-green-600 text-white font-semibold rounded-[8px] text-[12px] transition-colors shadow-sm flex items-center gap-1"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Mark Ready</span>
+                            </button>
+                          ) : null}
+
+                          <button
+                            type="button"
+                            onClick={() => onSelectOrder(order)}
+                            className="p-1.5 text-[#7A7670] hover:text-[#1E1E1E] rounded-[8px] hover:bg-gray-100 transition-colors"
+                            title="View order details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+        )}
+      </div>
+    </div>
+  );
+}
